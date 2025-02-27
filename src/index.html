@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SudoSage - Sudoku Board Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        #board-container {
+            margin: 20px auto;
+            width: 450px;
+        }
+        #sudoku-board {
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            grid-template-rows: repeat(9, 1fr);
+            border: 2px solid #333;
+        }
+        .cell {
+            width: 50px;
+            height: 50px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        .cell:nth-child(3n) {
+            border-right: 2px solid #333;
+        }
+        .cell:nth-child(9n) {
+            border-right: none;
+        }
+        .cell:nth-child(n+19):nth-child(-n+27),
+        .cell:nth-child(n+46):nth-child(-n+54) {
+            border-bottom: 2px solid #333;
+        }
+        .given {
+            font-weight: bold;
+            background-color: #f0f0f0;
+        }
+        .selected {
+            background-color: #e0f7fa;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        .controls button {
+            margin: 0 5px;
+            padding: 10px 15px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        #console {
+            font-family: monospace;
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 5px;
+            height: 200px;
+            overflow: auto;
+            margin-top: 20px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>SudoSage - Sudoku Board Test</h1>
+    
+    <div id="board-container">
+        <div id="sudoku-board"></div>
+    </div>
+    
+    <div class="controls">
+        <button id="new-board">New Random Board</button>
+        <button id="clear-board">Clear Board</button>
+        <button id="run-tests">Run Unit Tests</button>
+    </div>
+    
+    <h2>Console Output</h2>
+    <div id="console"></div>
+    
+    <script type="module">
+        // Import the SudokuBoard class
+        import SudokuBoard from './js/core/board.js';
+        
+        // Initialize console output
+        const consoleOutput = document.getElementById('console');
+        const originalConsoleLog = console.log;
+        console.log = function(...args) {
+            originalConsoleLog.apply(console, args);
+            consoleOutput.textContent += args.join(' ') + '\n';
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        };
+        
+        // Initialize board
+        let selectedCell = null;
+        let sudokuBoard = new SudokuBoard();
+        
+        // Sample board for testing
+        const sampleBoard = [
+            [5, 3, 0, 0, 7, 0, 0, 0, 0],
+            [6, 0, 0, 1, 9, 5, 0, 0, 0],
+            [0, 9, 8, 0, 0, 0, 0, 6, 0],
+            [8, 0, 0, 0, 6, 0, 0, 0, 3],
+            [4, 0, 0, 8, 0, 3, 0, 0, 1],
+            [7, 0, 0, 0, 2, 0, 0, 0, 6],
+            [0, 6, 0, 0, 0, 0, 2, 8, 0],
+            [0, 0, 0, 4, 1, 9, 0, 0, 5],
+            [0, 0, 0, 0, 8, 0, 0, 7, 9]
+        ];
+        
+        // Create the board UI
+        function createBoardUI() {
+            const boardElement = document.getElementById('sudoku-board');
+            boardElement.innerHTML = '';
+            
+            for (let row = 0; row < 9; row++) {
+                for (let col = 0; col < 9; col++) {
+                    const cellElement = document.createElement('div');
+                    cellElement.className = 'cell';
+                    cellElement.dataset.row = row;
+                    cellElement.dataset.col = col;
+                    
+                    const value = sudokuBoard.grid[row][col];
+                    if (value !== 0) {
+                        cellElement.textContent = value;
+                        if (sudokuBoard.isGiven[row][col]) {
+                            cellElement.classList.add('given');
+                        }
+                    }
+                    
+                    cellElement.addEventListener('click', () => selectCell(row, col));
+                    boardElement.appendChild(cellElement);
+                }
+            }
+            
+            // Add keyboard event listener for number input
+            document.addEventListener('keydown', handleKeyDown);
+        }
+        
+        // Select a cell
+        function selectCell(row, col) {
+            // Clear previous selection
+            if (selectedCell) {
+                const prevCell = document.querySelector(`.cell[data-row="${selectedCell.row}"][data-col="${selectedCell.col}"]`);
+                if (prevCell) {
+                    prevCell.classList.remove('selected');
+                }
+            }
+            
+            selectedCell = { row, col };
+            
+            // Highlight new selection
+            const cellElement = document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
+            cellElement.classList.add('selected');
+            
+            // Log cell info
+            const value = sudokuBoard.grid[row][col];
+            const candidates = sudokuBoard.getCandidates(row, col);
+            console.log(`Selected cell [${row}, ${col}]: value=${value}, candidates=${candidates.join(',')}`);
+        }
+        
+        // Handle keyboard input
+        function handleKeyDown(event) {
+            if (!selectedCell) return;
+            
+            const { row, col } = selectedCell;
+            
+            // Handle number keys (1-9)
+            if (event.key >= '1' && event.key <= '9') {
+                const value = parseInt(event.key);
+                if (sudokuBoard.setValue(row, col, value)) {
+                    updateCell(row, col);
+                    console.log(`Set value ${value} at [${row}, ${col}]`);
+                } else {
+                    console.log(`Cannot set ${value} at [${row}, ${col}] - invalid move`);
+                }
+            }
+            // Handle delete/backspace to clear a cell
+            else if (event.key === 'Delete' || event.key === 'Backspace') {
+                if (sudokuBoard.clearValue(row, col)) {
+                    updateCell(row, col);
+                    console.log(`Cleared cell at [${row}, ${col}]`);
+                } else {
+                    console.log(`Cannot clear cell at [${row}, ${col}] - given value`);
+                }
+            }
+        }
+        
+        // Update a specific cell in the UI
+        function updateCell(row, col) {
+            const cellElement = document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
+            const value = sudokuBoard.grid[row][col];
+            
+            if (value !== 0) {
+                cellElement.textContent = value;
+            } else {
+                cellElement.textContent = '';
+            }
+        }
+        
+        // Initialize the board with sample data
+        function initializeSampleBoard() {
+            sudokuBoard = new SudokuBoard(sampleBoard);
+            createBoardUI();
+            console.log('Board initialized with sample data');
+        }
+        
+        // Clear the board
+        function clearBoard() {
+            sudokuBoard = new SudokuBoard();
+            createBoardUI();
+            console.log('Board cleared');
+        }
+        
+        // Run the unit tests
+        async function runTests() {
+            console.log('Running tests...');
+            
+            try {
+                // Import the test module
+                const testModule = await import('./js/core/board.test.js');
+                console.log('Tests completed!');
+            } catch (error) {
+                console.error('Error running tests:', error);
+            }
+        }
+        
+        // Button event listeners
+        document.getElementById('new-board').addEventListener('click', initializeSampleBoard);
+        document.getElementById('clear-board').addEventListener('click', clearBoard);
+        document.getElementById('run-tests').addEventListener('click', runTests);
+        
+        // Initialize with an empty board
+        createBoardUI();
+        console.log('SudoSage board initialized. Click "New Random Board" to load a sample puzzle.');
+    </script>
+</body>
+</html> 
