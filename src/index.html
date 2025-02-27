@@ -74,10 +74,11 @@
         .controls {
             display: flex;
             justify-content: center;
+            flex-wrap: wrap;
             margin: 20px 0;
         }
         .controls button {
-            margin: 0 5px;
+            margin: 5px;
             padding: 10px 15px;
             font-size: 16px;
             cursor: pointer;
@@ -130,6 +131,25 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+        .difficulty-selector {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 10px 0;
+        }
+        .difficulty-selector button {
+            margin: 5px;
+            padding: 8px 12px;
+            cursor: pointer;
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .difficulty-selector button.active {
+            background-color: #4caf50;
+            color: white;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -169,7 +189,22 @@
     <div class="controls">
         <button id="new-board">New Sample Board</button>
         <button id="reset-button">Reset</button>
+        <button id="solve-button">Solve Board</button>
+    </div>
+    
+    <div class="difficulty-selector">
+        <p>Generate new puzzle: </p>
+        <button class="difficulty-button active" data-difficulty="1">Easy</button>
+        <button class="difficulty-button" data-difficulty="2">Medium-Easy</button>
+        <button class="difficulty-button" data-difficulty="3">Medium</button>
+        <button class="difficulty-button" data-difficulty="4">Hard</button>
+        <button class="difficulty-button" data-difficulty="5">Expert</button>
+        <button id="generate-button">Generate</button>
+    </div>
+    
+    <div class="controls">
         <button id="run-tests">Run Unit Tests</button>
+        <button id="hint-button">Get Hint</button>
     </div>
     
     <h2>Console Output</h2>
@@ -179,6 +214,7 @@
         // Import the modules
         import SudokuBoard from './js/core/board.js';
         import { StateManager } from './js/core/state.js';
+        import { SudokuSolver, generatePuzzle } from './js/core/solver.js';
         
         // Initialize console output
         const consoleOutput = document.getElementById('console');
@@ -191,10 +227,12 @@
         
         // Create state manager
         const stateManager = new StateManager();
+        const solver = new SudokuSolver();
         
         // UI state
         let selectedCell = null;
         let inputMode = 'normal'; // 'normal' or 'notes'
+        let currentDifficulty = 1; // Default difficulty
         
         // Sample board for testing
         const sampleBoard = [
@@ -379,6 +417,87 @@
             }
         }
         
+        // Handle solve button click
+        function handleSolveClick() {
+            const state = stateManager.getState();
+            const currentBoard = state.board;
+            
+            // Create a solver with the current board
+            solver.setBoard(currentBoard);
+            
+            console.log('Solving the board...');
+            const result = solver.solve({ recordSteps: true });
+            
+            if (result.solved) {
+                console.log('Board solved successfully!');
+                
+                // Create a new board with the solution
+                const solvedBoard = result.solutions[0].clone();
+                
+                // Start a new game with the solved board
+                stateManager.newGame(solvedBoard, state.difficulty);
+                
+                // Update the UI
+                createBoardUI();
+            } else {
+                console.log(`Board could not be solved: ${result.reason}`);
+            }
+        }
+        
+        // Handle generate button click
+        function handleGenerateClick() {
+            console.log(`Generating new puzzle with difficulty: ${currentDifficulty}`);
+            
+            // Generate a puzzle with the selected difficulty
+            const puzzle = generatePuzzle(currentDifficulty);
+            
+            // Count givens
+            let givenCount = 0;
+            for (let row = 0; row < 9; row++) {
+                for (let col = 0; col < 9; col++) {
+                    if (puzzle.grid[row][col] !== 0) {
+                        givenCount++;
+                    }
+                }
+            }
+            
+            console.log(`Generated puzzle with ${givenCount} givens`);
+            
+            // Start a new game with the generated puzzle
+            stateManager.newGame(puzzle, currentDifficulty);
+            
+            // Update the UI
+            createBoardUI();
+            
+            // Clear selection
+            selectedCell = null;
+        }
+        
+        // Handle get hint click
+        function handleHintClick() {
+            const state = stateManager.getState();
+            const currentBoard = state.board;
+            
+            // Create a solver with the current board
+            solver.setBoard(currentBoard);
+            
+            console.log('Calculating hint...');
+            solver.solve({ recordSteps: true });
+            
+            // Get the first step as a hint
+            if (solver.steps.length > 0) {
+                const hint = solver.steps[0];
+                console.log('Hint:', hint.description);
+                
+                // Highlight the hint cell
+                if (hint.row !== undefined && hint.col !== undefined) {
+                    selectCell(hint.row, hint.col);
+                }
+            } else {
+                console.log('No hint available');
+            }
+        }
+        
         // Update UI state (button enabled/disabled states)
         function updateUiState() {
             const undoButton = document.getElementById('undo-button');
@@ -428,6 +547,9 @@
                 
                 // Then run state management tests
                 await import('./js/core/state.test.js');
+                
+                // Then run solver tests
+                await import('./js/core/solver.test.js');
                 
                 console.log('All tests completed!');
             } catch (error) {
@@ -479,6 +601,22 @@
             console.log(`Switched to ${inputMode} mode`);
         }
         
+        // Set the active difficulty button
+        function setActiveDifficulty(difficulty) {
+            currentDifficulty = parseInt(difficulty);
+            
+            // Update UI
+            document.querySelectorAll('.difficulty-button').forEach(button => {
+                if (parseInt(button.dataset.difficulty) === currentDifficulty) {
+                    button.classList.add('active');
+                } else {
+                    button.classList.remove('active');
+                }
+            });
+            
+            console.log(`Selected difficulty: ${currentDifficulty}`);
+        }
+        
         // Add event listeners
         document.querySelectorAll('.num-button').forEach(button => {
             button.addEventListener('click', () => handleNumberClick(parseInt(button.dataset.value)));
@@ -489,8 +627,16 @@
         document.getElementById('redo-button').addEventListener('click', handleRedoClick);
         document.getElementById('reset-button').addEventListener('click', handleResetClick);
         document.getElementById('new-board').addEventListener('click', initializeSampleBoard);
+        document.getElementById('solve-button').addEventListener('click', handleSolveClick);
+        document.getElementById('generate-button').addEventListener('click', handleGenerateClick);
+        document.getElementById('hint-button').addEventListener('click', handleHintClick);
         document.getElementById('run-tests').addEventListener('click', runTests);
         document.addEventListener('keydown', handleKeyDown);
+        
+        // Add difficulty button event listeners
+        document.querySelectorAll('.difficulty-button').forEach(button => {
+            button.addEventListener('click', () => setActiveDifficulty(button.dataset.difficulty));
+        });
         
         // Add mode toggle event listeners
         document.querySelectorAll('input[name="mode"]').forEach(radio => {
@@ -516,7 +662,7 @@
         
         // Initialize with an empty board
         createBoardUI();
-        console.log('SudoSage board initialized. Click "New Sample Board" to load a sample puzzle.');
+        console.log('SudoSage board initialized. Click "New Sample Board" to load a sample puzzle or "Generate" to create a new one.');
     </script>
 </body>
 </html> 
