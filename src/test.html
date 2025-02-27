@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SudoSage - Solver Tests</title>
+    <style>
+        body {
+            font-family: monospace;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+        }
+        #results {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-top: 20px;
+            background-color: #fff;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+        .success {
+            color: green;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        .test-group {
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px dashed #ccc;
+        }
+    </style>
+</head>
+<body>
+    <h1>SudoSage - Solver Tests</h1>
+    <button id="run-tests">Run All Tests</button>
+    <div id="results"></div>
+
+    <script type="module">
+        // Override console.log to also output to our results div
+        const resultsDiv = document.getElementById('results');
+        const originalConsoleLog = console.log;
+        
+        console.log = function(...args) {
+            // Call the original console.log
+            originalConsoleLog.apply(console, args);
+            
+            // Add to our results div
+            const message = args.map(arg => {
+                if (typeof arg === 'object') {
+                    return JSON.stringify(arg, null, 2);
+                } else {
+                    return String(arg);
+                }
+            }).join(' ');
+            
+            const logLine = document.createElement('div');
+            
+            // Apply styling based on message content
+            if (message.includes('passed')) {
+                logLine.className = 'success';
+            } else if (message.includes('failed') || message.includes('Error')) {
+                logLine.className = 'error';
+            } else if (message.includes('Testing')) {
+                logLine.className = 'test-group';
+            }
+            
+            logLine.textContent = message;
+            resultsDiv.appendChild(logLine);
+            resultsDiv.scrollTop = resultsDiv.scrollHeight;
+        };
+
+        // Import test module
+        import runTests from './js/core/solver.test.js';
+        
+        // Run tests when button clicked
+        document.getElementById('run-tests').addEventListener('click', () => {
+            resultsDiv.innerHTML = '';
+            try {
+                runTests();
+            } catch (error) {
+                console.log(`ERROR: ${error.message}`);
+                console.log(error.stack);
+            }
+        });
+    </script>
+</body>
+</html> 
