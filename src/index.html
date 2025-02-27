@@ -35,6 +35,7 @@
             align-items: center;
             font-size: 24px;
             cursor: pointer;
+            position: relative;
         }
         .cell:nth-child(3n) {
             border-right: 2px solid #333;
@@ -53,6 +54,23 @@
         .selected {
             background-color: #e0f7fa;
         }
+        .notes {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            font-size: 10px;
+            color: #666;
+        }
+        .note {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
         .controls {
             display: flex;
             justify-content: center;
@@ -62,6 +80,40 @@
             margin: 0 5px;
             padding: 10px 15px;
             font-size: 16px;
+            cursor: pointer;
+        }
+        .numpad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 5px;
+            margin: 20px auto;
+            width: 200px;
+        }
+        .numpad button {
+            padding: 10px;
+            font-size: 18px;
+            cursor: pointer;
+        }
+        .action-buttons {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        .action-buttons button {
+            margin: 0 5px;
+            padding: 10px 15px;
+            font-size: 16px;
+            cursor: pointer;
+            min-width: 80px;
+        }
+        .mode-toggle {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        .mode-toggle label {
+            margin: 0 10px;
             cursor: pointer;
         }
         #console {
@@ -74,6 +126,10 @@
             margin-top: 20px;
             white-space: pre-wrap;
         }
+        .disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -83,9 +139,36 @@
         <div id="sudoku-board"></div>
     </div>
     
+    <div class="mode-toggle">
+        <label>
+            <input type="radio" name="mode" value="normal" checked> Normal Mode
+        </label>
+        <label>
+            <input type="radio" name="mode" value="notes"> Notes Mode
+        </label>
+    </div>
+    
+    <div class="numpad">
+        <button class="num-button" data-value="1">1</button>
+        <button class="num-button" data-value="2">2</button>
+        <button class="num-button" data-value="3">3</button>
+        <button class="num-button" data-value="4">4</button>
+        <button class="num-button" data-value="5">5</button>
+        <button class="num-button" data-value="6">6</button>
+        <button class="num-button" data-value="7">7</button>
+        <button class="num-button" data-value="8">8</button>
+        <button class="num-button" data-value="9">9</button>
+    </div>
+    
+    <div class="action-buttons">
+        <button id="undo-button" disabled>Undo</button>
+        <button id="erase-button">Erase</button>
+        <button id="redo-button" disabled>Redo</button>
+    </div>
+    
     <div class="controls">
-        <button id="new-board">New Random Board</button>
-        <button id="clear-board">Clear Board</button>
+        <button id="new-board">New Sample Board</button>
+        <button id="reset-button">Reset</button>
         <button id="run-tests">Run Unit Tests</button>
     </div>
     
@@ -93,8 +176,9 @@
     <div id="console"></div>
     
     <script type="module">
-        // Import the SudokuBoard class
+        // Import the modules
         import SudokuBoard from './js/core/board.js';
+        import { StateManager } from './js/core/state.js';
         
         // Initialize console output
         const consoleOutput = document.getElementById('console');
@@ -105,9 +189,12 @@
             consoleOutput.scrollTop = consoleOutput.scrollHeight;
         };
         
-        // Initialize board
+        // Create state manager
+        const stateManager = new StateManager();
+        
+        // UI state
         let selectedCell = null;
-        let sudokuBoard = new SudokuBoard();
+        let inputMode = 'normal'; // 'normal' or 'notes'
         
         // Sample board for testing
         const sampleBoard = [
@@ -127,6 +214,9 @@
             const boardElement = document.getElementById('sudoku-board');
             boardElement.innerHTML = '';
             
+            const state = stateManager.getState();
+            const board = state.board;
+            
             for (let row = 0; row < 9; row++) {
                 for (let col = 0; col < 9; col++) {
                     const cellElement = document.createElement('div');
@@ -134,11 +224,33 @@
                     cellElement.dataset.row = row;
                     cellElement.dataset.col = col;
                     
-                    const value = sudokuBoard.grid[row][col];
+                    const value = board.grid[row][col];
                     if (value !== 0) {
                         cellElement.textContent = value;
-                        if (sudokuBoard.isGiven[row][col]) {
+                        if (board.isGiven[row][col]) {
                             cellElement.classList.add('given');
+                        }
+                    } else {
+                        // Add notes if present
+                        const candidates = board.getCandidates(row, col);
+                        if (candidates.length > 0) {
+                            const notesElement = document.createElement('div');
+                            notesElement.className = 'notes';
+                            
+                            // Add each note
+                            for (let i = 1; i <= 9; i++) {
+                                const noteElement = document.createElement('div');
+                                noteElement.className = 'note';
+                                noteElement.dataset.value = i;
+                                
+                                if (candidates.includes(i)) {
+                                    noteElement.textContent = i;
+                                }
+                                
+                                notesElement.appendChild(noteElement);
+                            }
+                            
+                            cellElement.appendChild(notesElement);
                         }
                     }
                     
@@ -147,8 +259,8 @@
                 }
             }
             
-            // Add keyboard event listener for number input
-            document.addEventListener('keydown', handleKeyDown);
+            // Update UI state elements
+            updateUiState();
         }
         
         // Select a cell
@@ -168,62 +280,142 @@
             cellElement.classList.add('selected');
             
             // Log cell info
-            const value = sudokuBoard.grid[row][col];
-            const candidates = sudokuBoard.getCandidates(row, col);
+            const state = stateManager.getState();
+            const value = state.board.grid[row][col];
+            const candidates = state.board.getCandidates(row, col);
             console.log(`Selected cell [${row}, ${col}]: value=${value}, candidates=${candidates.join(',')}`);
         }
         
-        // Handle keyboard input
-        function handleKeyDown(event) {
+        // Handle number button click
+        function handleNumberClick(value) {
             if (!selectedCell) return;
             
             const { row, col } = selectedCell;
             
-            // Handle number keys (1-9)
-            if (event.key >= '1' && event.key <= '9') {
-                const value = parseInt(event.key);
-                if (sudokuBoard.setValue(row, col, value)) {
-                    updateCell(row, col);
-                    console.log(`Set value ${value} at [${row}, ${col}]`);
-                } else {
-                    console.log(`Cannot set ${value} at [${row}, ${col}] - invalid move`);
-                }
+            if (inputMode === 'normal') {
+                // Set value
+                stateManager.setValue(row, col, value);
+            } else {
+                // Toggle note
+                const state = stateManager.getState();
+                const candidates = state.board.getCandidates(row, col);
+                const isOn = !candidates.includes(value);
+                stateManager.setNote(row, col, value, isOn);
             }
-            // Handle delete/backspace to clear a cell
-            else if (event.key === 'Delete' || event.key === 'Backspace') {
-                if (sudokuBoard.clearValue(row, col)) {
-                    updateCell(row, col);
-                    console.log(`Cleared cell at [${row}, ${col}]`);
-                } else {
-                    console.log(`Cannot clear cell at [${row}, ${col}] - given value`);
+            
+            // Update the UI
+            createBoardUI();
+            
+            // Reselect the cell
+            selectCell(row, col);
+        }
+        
+        // Handle erase button click
+        function handleEraseClick() {
+            if (!selectedCell) return;
+            
+            const { row, col } = selectedCell;
+            stateManager.clearValue(row, col);
+            
+            // Update the UI
+            createBoardUI();
+            
+            // Reselect the cell
+            selectCell(row, col);
+        }
+        
+        // Handle undo button click
+        function handleUndoClick() {
+            if (!stateManager.canUndo()) return;
+            
+            stateManager.undo();
+            
+            // Update the UI
+            createBoardUI();
+            
+            // Clear selection
+            if (selectedCell) {
+                const cellElement = document.querySelector(`.cell[data-row="${selectedCell.row}"][data-col="${selectedCell.col}"]`);
+                if (cellElement) {
+                    cellElement.classList.remove('selected');
                 }
+                selectedCell = null;
             }
         }
         
-        // Update a specific cell in the UI
-        function updateCell(row, col) {
-            const cellElement = document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
-            const value = sudokuBoard.grid[row][col];
+        // Handle redo button click
+        function handleRedoClick() {
+            if (!stateManager.canRedo()) return;
             
-            if (value !== 0) {
-                cellElement.textContent = value;
+            stateManager.redo();
+            
+            // Update the UI
+            createBoardUI();
+            
+            // Clear selection
+            if (selectedCell) {
+                const cellElement = document.querySelector(`.cell[data-row="${selectedCell.row}"][data-col="${selectedCell.col}"]`);
+                if (cellElement) {
+                    cellElement.classList.remove('selected');
+                }
+                selectedCell = null;
+            }
+        }
+        
+        // Handle reset button click
+        function handleResetClick() {
+            stateManager.reset();
+            
+            // Update the UI
+            createBoardUI();
+            
+            // Clear selection
+            if (selectedCell) {
+                const cellElement = document.querySelector(`.cell[data-row="${selectedCell.row}"][data-col="${selectedCell.col}"]`);
+                if (cellElement) {
+                    cellElement.classList.remove('selected');
+                }
+                selectedCell = null;
+            }
+        }
+        
+        // Update UI state (button enabled/disabled states)
+        function updateUiState() {
+            const undoButton = document.getElementById('undo-button');
+            const redoButton = document.getElementById('redo-button');
+            
+            undoButton.disabled = !stateManager.canUndo();
+            redoButton.disabled = !stateManager.canRedo();
+            
+            if (undoButton.disabled) {
+                undoButton.classList.add('disabled');
             } else {
-                cellElement.textContent = '';
+                undoButton.classList.remove('disabled');
+            }
+            
+            if (redoButton.disabled) {
+                redoButton.classList.add('disabled');
+            } else {
+                redoButton.classList.remove('disabled');
             }
         }
         
         // Initialize the board with sample data
         function initializeSampleBoard() {
-            sudokuBoard = new SudokuBoard(sampleBoard);
+            const boardInstance = new SudokuBoard();
+            
+            // Set values from sample board
+            for (let row = 0; row < 9; row++) {
+                for (let col = 0; col < 9; col++) {
+                    if (sampleBoard[row][col] !== 0) {
+                        boardInstance.setValue(row, col, sampleBoard[row][col], true);
+                    }
+                }
+            }
+            
+            stateManager.newGame(boardInstance, 3);
             createBoardUI();
             console.log('Board initialized with sample data');
-        }
-        
-        // Clear the board
-        function clearBoard() {
-            sudokuBoard = new SudokuBoard();
-            createBoardUI();
-            console.log('Board cleared');
         }
         
         // Run the unit tests
@@ -231,22 +423,100 @@
             console.log('Running tests...');
             
             try {
-                // Import the test module
-                const testModule = await import('./js/core/board.test.js');
-                console.log('Tests completed!');
+                // Run board tests first
+                await import('./js/core/board.test.js');
+                
+                // Then run state management tests
+                await import('./js/core/state.test.js');
+                
+                console.log('All tests completed!');
             } catch (error) {
                 console.error('Error running tests:', error);
             }
         }
         
-        // Button event listeners
+        // Handle keyboard input
+        function handleKeyDown(event) {
+            // Number keys (1-9)
+            if (event.key >= '1' && event.key <= '9') {
+                handleNumberClick(parseInt(event.key));
+            }
+            // Delete/Backspace to erase
+            else if (event.key === 'Delete' || event.key === 'Backspace') {
+                handleEraseClick();
+            }
+            // 'z' for undo (with Ctrl/Cmd)
+            else if ((event.ctrlKey || event.metaKey) && event.key === 'z') {
+                event.preventDefault();
+                handleUndoClick();
+            }
+            // 'y' for redo (with Ctrl/Cmd)
+            else if ((event.ctrlKey || event.metaKey) && event.key === 'y') {
+                event.preventDefault();
+                handleRedoClick();
+            }
+            // Space or 'm' to toggle mode
+            else if (event.key === ' ' || event.key.toLowerCase() === 'm') {
+                event.preventDefault();
+                toggleInputMode();
+            }
+        }
+        
+        // Toggle input mode (normal/notes)
+        function toggleInputMode() {
+            inputMode = inputMode === 'normal' ? 'notes' : 'normal';
+            
+            // Update radio buttons
+            const normalRadio = document.querySelector('input[value="normal"]');
+            const notesRadio = document.querySelector('input[value="notes"]');
+            
+            if (inputMode === 'normal') {
+                normalRadio.checked = true;
+            } else {
+                notesRadio.checked = true;
+            }
+            
+            console.log(`Switched to ${inputMode} mode`);
+        }
+        
+        // Add event listeners
+        document.querySelectorAll('.num-button').forEach(button => {
+            button.addEventListener('click', () => handleNumberClick(parseInt(button.dataset.value)));
+        });
+        
+        document.getElementById('erase-button').addEventListener('click', handleEraseClick);
+        document.getElementById('undo-button').addEventListener('click', handleUndoClick);
+        document.getElementById('redo-button').addEventListener('click', handleRedoClick);
+        document.getElementById('reset-button').addEventListener('click', handleResetClick);
         document.getElementById('new-board').addEventListener('click', initializeSampleBoard);
-        document.getElementById('clear-board').addEventListener('click', clearBoard);
         document.getElementById('run-tests').addEventListener('click', runTests);
+        document.addEventListener('keydown', handleKeyDown);
+        
+        // Add mode toggle event listeners
+        document.querySelectorAll('input[name="mode"]').forEach(radio => {
+            radio.addEventListener('change', event => {
+                inputMode = event.target.value;
+                console.log(`Switched to ${inputMode} mode`);
+            });
+        });
+        
+        // Subscribe to state changes
+        stateManager.subscribe((state, diff) => {
+            // Log changes
+            if (diff.changedCells.length > 0) {
+                console.log('Cells changed:', diff.changedCells.length);
+            }
+            if (diff.changedProperties.length > 0) {
+                console.log('Properties changed:', diff.changedProperties.map(p => p.property).join(', '));
+            }
+            
+            // Update UI state
+            updateUiState();
+        });
         
         // Initialize with an empty board
         createBoardUI();
-        console.log('SudoSage board initialized. Click "New Random Board" to load a sample puzzle.');
+        console.log('SudoSage board initialized. Click "New Sample Board" to load a sample puzzle.');
     </script>
 </body>
 </html> 

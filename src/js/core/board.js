@@ -367,7 +367,15 @@ class SudokuBoard {
      * @returns {Array<number>} Array of candidate values (1-9)
      */
     getCandidates(row, col) {
-        return getAllSetBits(this.candidates[row][col]);
+        // Validate position
+        if (row < 0 || row > 8 || col < 0 || col > 8) {
+            console.error('Invalid position:', row, col);
+            return [];
+        }
+        
+        // Get candidates from sparse matrix
+        const index = row * 9 + col;
+        return this.candidates[index] ? [...this.candidates[index]] : [];
     }
     
     /**
@@ -393,17 +401,129 @@ class SudokuBoard {
             }
         }
         
-        // Copy bit vectors
-        newBoard.rowBits = [...this.rowBits];
-        newBoard.colBits = [...this.colBits];
-        newBoard.boxBits = [...this.boxBits];
-        
-        // Copy candidates
-        for (let row = 0; row < BOARD_SIZE; row++) {
-            newBoard.candidates[row] = [...this.candidates[row]];
-        }
+        // Copy candidates using sparse matrix representation
+        newBoard.candidates = JSON.parse(JSON.stringify(this.candidates));
         
         return newBoard;
+    }
+    
+    /**
+     * Adds a candidate value to a cell
+     * @param {number} row - Row index (0-8)
+     * @param {number} col - Column index (0-8)
+     * @param {number} value - Candidate value (1-9)
+     * @returns {boolean} Whether the operation was successful
+     */
+    addCandidate(row, col, value) {
+        // Validate position
+        if (row < 0 || row > 8 || col < 0 || col > 8) {
+            console.error('Invalid position:', row, col);
+            return false;
+        }
+        
+        // Validate value
+        if (value < 1 || value > 9) {
+            console.error('Invalid candidate value:', value);
+            return false;
+        }
+        
+        // Cannot add candidates to filled cells
+        if (this.grid[row][col] !== 0) {
+            return false;
+        }
+        
+        // Add candidate to the sparse matrix
+        const index = row * 9 + col;
+        if (!this.candidates[index]) {
+            this.candidates[index] = [];
+        }
+        
+        // Add if not already present
+        if (!this.candidates[index].includes(value)) {
+            this.candidates[index].push(value);
+            this.candidates[index].sort();
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Removes a candidate value from a cell
+     * @param {number} row - Row index (0-8)
+     * @param {number} col - Column index (0-8)
+     * @param {number} value - Candidate value (1-9)
+     * @returns {boolean} Whether the operation was successful
+     */
+    removeCandidate(row, col, value) {
+        // Validate position
+        if (row < 0 || row > 8 || col < 0 || col > 8) {
+            console.error('Invalid position:', row, col);
+            return false;
+        }
+        
+        // Validate value
+        if (value < 1 || value > 9) {
+            console.error('Invalid candidate value:', value);
+            return false;
+        }
+        
+        // Cannot remove candidates from filled cells
+        if (this.grid[row][col] !== 0) {
+            return false;
+        }
+        
+        // Remove candidate from the sparse matrix
+        const index = row * 9 + col;
+        if (this.candidates[index]) {
+            const valueIndex = this.candidates[index].indexOf(value);
+            if (valueIndex !== -1) {
+                this.candidates[index].splice(valueIndex, 1);
+                
+                // Remove empty candidate arrays
+                if (this.candidates[index].length === 0) {
+                    delete this.candidates[index];
+                }
+                
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Serializes the board to a JSON-compatible object
+     * @returns {Object} Serialized board data
+     */
+    serialize() {
+        return {
+            grid: JSON.parse(JSON.stringify(this.grid)),
+            isGiven: JSON.parse(JSON.stringify(this.isGiven)),
+            candidates: JSON.parse(JSON.stringify(this.candidates))
+        };
+    }
+    
+    /**
+     * Creates a new SudokuBoard from serialized data
+     * @param {Object} data - Serialized board data
+     * @returns {SudokuBoard} A new SudokuBoard instance
+     */
+    static deserialize(data) {
+        const board = new SudokuBoard();
+        
+        // Restore grid
+        for (let row = 0; row < 9; row++) {
+            for (let col = 0; col < 9; col++) {
+                if (data.grid[row][col] !== 0) {
+                    board.setValue(row, col, data.grid[row][col], data.isGiven[row][col]);
+                }
+            }
+        }
+        
+        // Restore candidates
+        board.candidates = JSON.parse(JSON.stringify(data.candidates));
+        
+        return board;
     }
 }
 
